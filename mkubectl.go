@@ -23,9 +23,15 @@ func main() {
 				Usage:   "regexp kubectl context name",
 				Aliases: []string{"c"},
 			},
+			&cli.StringFlag{
+				Name:    "namespace",
+				Value:   "",
+				Usage:   "kubectl namespace",
+				Aliases: []string{"n"},
+			},
 		},
 		Action: func(c *cli.Context) error {
-			return run(c.Context, c.String("context"), c.Args().Slice())
+			return run(c.Context, c.String("context"), c.String("namespace"), c.Args().Slice())
 		},
 	}
 
@@ -35,7 +41,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, kubeContext string, kubectlCommands []string) error {
+func run(ctx context.Context, kubeContext string, namespace string, kubectlCommands []string) error {
 	r, err := regexp.Compile(kubeContext)
 	if err != nil {
 		return fmt.Errorf("failed to compile regexp: %w", err)
@@ -63,9 +69,13 @@ func run(ctx context.Context, kubeContext string, kubectlCommands []string) erro
 		}
 		var commands []string
 		commands = append(commands, "--context", context)
+		if namespace != "" {
+			commands = append(commands, "--namespace", namespace)
+		}
 		commands = append(commands, kubectlCommands...)
 		cmd := exec.CommandContext(ctx, "kubectl", commands...)
-		cmd.Stdout = os.Stdout
+
+		cmd.Stdout = NewContextWriter(context)
 		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
@@ -73,4 +83,22 @@ func run(ctx context.Context, kubeContext string, kubectlCommands []string) erro
 		}
 	}
 	return nil
+}
+
+type contextWriter struct {
+	context string
+}
+
+func NewContextWriter(context string) *contextWriter {
+	return &contextWriter{context: context}
+}
+
+func (cw *contextWriter) Write(p []byte) (n int, err error) {
+	for _, a := range p {
+		if string(a) == "\n" {
+			fmt.Fprint(os.Stdout, "\t", cw.context)
+		}
+		fmt.Fprint(os.Stdout, string(a))
+	}
+	return len(p), nil
 }
