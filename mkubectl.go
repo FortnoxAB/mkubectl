@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
@@ -29,8 +30,18 @@ func main() {
 				Usage:   "kubectl namespace",
 				Aliases: []string{"n"},
 			},
+			&cli.StringFlag{
+				Name:  "log-level",
+				Value: "info",
+			},
 		},
 		Action: func(c *cli.Context) error {
+			lvl, err := logrus.ParseLevel(c.String("log-level"))
+			if err != nil {
+				return err
+			}
+
+			logrus.SetLevel(lvl)
 			return run(c.Context, c.String("context"), c.String("namespace"), c.Args().Slice())
 		},
 	}
@@ -67,6 +78,7 @@ func run(ctx context.Context, kubeContext string, namespace string, kubectlComma
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		logrus.Debugf("running in context %s", context)
 		var commands []string
 		commands = append(commands, "--context", context)
 		if namespace != "" {
