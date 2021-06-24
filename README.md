@@ -1,6 +1,11 @@
 # mkubectl
 Run kubectl on multiple clusters using regexp for context name. 
 
+## Install
+```
+go get -u github.com/fortnoxab/mkubectl
+```
+
 ## Usage
 
 ```
