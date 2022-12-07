@@ -20,8 +20,10 @@ COMMANDS:
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --context value, -c value  regexp kubectl context name
-   --help, -h                 show help (default: false)
+   --context value, -c value    regexp kubectl context name
+   --namespace value, -n value  kubectl namespace
+   --log-level value            (default: "info")
+   --help, -h                   show help (default: false)
 ```
 
 
