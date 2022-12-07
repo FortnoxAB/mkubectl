@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -74,43 +75,70 @@ func run(ctx context.Context, kubeContext string, namespace string, kubectlComma
 		}
 		clusters = append(clusters, s)
 	}
+	chString := make(chan string)
+	chErr := make(chan error)
 	for _, context := range clusters {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		logrus.Debugf("running in context %s", context)
-		var commands []string
-		commands = append(commands, "--context", context)
-		if namespace != "" {
-			commands = append(commands, "--namespace", namespace)
-		}
-		commands = append(commands, kubectlCommands...)
-		cmd := exec.CommandContext(ctx, "kubectl", commands...)
+		context := context
+		go func() {
+			s, err := runOnCluster(ctx, context, namespace, kubectlCommands)
+			chString <- s
+			chErr <- err
+		}()
+	}
 
-		cmd.Stdout = NewContextWriter(context)
-		cmd.Stderr = os.Stderr
-		err := cmd.Run()
+	for range clusters {
+		fmt.Fprint(os.Stdout, <-chString)
+		err := <-chErr
 		if err != nil {
-			return fmt.Errorf("failed to run command %s on context %s: %w", strings.Join(kubectlCommands, " "), context, err)
+			return err
 		}
 	}
 	return nil
 }
 
+func runOnCluster(ctx context.Context, context, namespace string, kubectlCommands []string) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	logrus.Debugf("running in context %s", context)
+	var commands []string
+	commands = append(commands, "--context", context)
+	if namespace != "" {
+		commands = append(commands, "--namespace", namespace)
+	}
+	commands = append(commands, kubectlCommands...)
+	cmd := exec.CommandContext(ctx, "kubectl", commands...)
+
+	buf := NewContextWriter(context)
+	errBuf := &bytes.Buffer{}
+	cmd.Stdout = buf
+	cmd.Stderr = errBuf
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("%s: failed to run: '%s' error: %w stdout: %s", context, strings.Join(kubectlCommands, " "), err, errBuf.String())
+	}
+
+	return buf.String(), nil
+}
+
 type contextWriter struct {
 	context string
+	buf     *bytes.Buffer
 }
 
 func NewContextWriter(context string) *contextWriter {
-	return &contextWriter{context: context}
+	return &contextWriter{context: context, buf: bytes.NewBuffer(nil)}
 }
 
+func (cw *contextWriter) String() string {
+	return cw.buf.String()
+}
 func (cw *contextWriter) Write(p []byte) (n int, err error) {
 	for _, a := range p {
 		if string(a) == "\n" {
-			fmt.Fprint(os.Stdout, "\t", cw.context)
+			fmt.Fprint(cw.buf, "\t", cw.context)
 		}
-		fmt.Fprint(os.Stdout, string(a))
+		fmt.Fprint(cw.buf, string(a))
 	}
 	return len(p), nil
 }
